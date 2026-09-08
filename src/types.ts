@@ -1,4 +1,4 @@
-export type Page = 'home' | 'versions' | 'resources' | 'worlds' | 'downloads' | 'settings'
+export type Page = 'home' | 'versions' | 'resources' | 'worlds' | 'multiplayer' | 'downloads' | 'settings'
 export interface WorldInfo { id: string; name: string; folder: string; location: string; modifiedAt: number }
 export interface WorldLibrary { worlds: WorldInfo[]; warnings: string[] }
 export interface GameVersion { id: string; type: string; releaseTime: string }
@@ -31,3 +31,5 @@ export type NatType = 'OpenInternet' | 'ConeOrRestricted' | 'Symmetric' | 'Unkno
 export interface NatReport { natType: NatType; mappedAddresses: string[]; successfulServers: number }
 export type MappingMethod = 'Upnp' | 'NatPmp' | 'Pcp'
 export interface PortMapping { method: MappingMethod; internalPort: number; externalPort: number; externalAddress: string | null; lifetimeSecs: number }
+export type P2pSessionState = 'Idle' | 'CreatingSession' | 'DetectingNetwork' | 'WaitingForAnswer' | 'Connecting' | 'HolePunching' | 'Handshaking' | 'Connected' | 'MinecraftReady' | 'Closing' | 'Closed' | 'Failed'
+export interface P2pRoomSnapshot { role: 'none' | 'host' | 'client'; state: P2pSessionState; inviteCode: string | null; answerCode: string | null; minecraftLanPort: number | null; localAddress: string | null; playerCount: number; transport: string | null; message: string }

@@ -1,4 +1,5 @@
 pub mod candidate;
+pub mod controller;
 pub mod crypto;
 pub mod error;
 pub mod hole_punch;

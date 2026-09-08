@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import { Activity, ArrowDownToLine, ArrowRight, Box, Check, ChevronRight, Coffee, Download, Folder, FolderOpen, House, LoaderCircle, Package, RefreshCw, Search, Settings2, ShieldCheck, Terminal, Trash2, X } from '@lucide/vue'
+import { Activity, ArrowDownToLine, ArrowRight, Box, Check, ChevronRight, Coffee, Download, Folder, FolderOpen, House, LoaderCircle, Package, Radio, RefreshCw, Search, Settings2, ShieldCheck, Terminal, Trash2, X } from '@lucide/vue'
 import WindowControls from './components/WindowControls.vue'
 import WorldManager from './components/WorldManager.vue'
 import AccountManager from './components/AccountManager.vue'
 import ResourceBrowser from './components/ResourceBrowser.vue'
+import Multiplayer from './components/Multiplayer.vue'
 import catclLogo from './assets/catcl-logo.jpg'
 import { useLauncherStore } from './stores/launcher'
 import type { Page } from './types'
@@ -15,10 +16,11 @@ const navigation = [
   { id: 'versions' as Page, label: '版本管理', icon: Box },
   { id: 'resources' as Page, label: '资源广场', icon: Package },
   { id: 'worlds' as Page, label: '世界管理', icon: Folder },
+  { id: 'multiplayer' as Page, label: '联机', icon: Radio },
   { id: 'downloads' as Page, label: '下载任务', icon: Download },
   { id: 'settings' as Page, label: '启动器设置', icon: Settings2 },
 ]
-const titles: Record<Page, string> = { home: '你的冒险基地', versions: '发现你的下一个世界', resources: '探索 Minecraft 社区生态', worlds: '收藏每一段冒险', downloads: '准备冒险所需的一切', settings: '让一切顺手起来' }
+const titles: Record<Page, string> = { home: '你的冒险基地', versions: '发现你的下一个世界', resources: '探索 Minecraft 社区生态', worlds: '收藏每一段冒险', multiplayer: '和朋友直接连接', downloads: '准备冒险所需的一切', settings: '让一切顺手起来' }
 function changeInstance(event: Event) { store.selectInstance((event.target as HTMLSelectElement).value) }
 function changeLoader(event: Event) { const value = (event.target as HTMLSelectElement).value; if (value === 'fabric' || value === 'forge' || value === 'neoforge') store.prepareLoader(value) }
 async function requestDeleteInstance(name: string) {
@@ -85,6 +87,7 @@ onMounted(() => store.initialize())
 
       <ResourceBrowser v-else-if="store.page === 'resources'"/>
       <WorldManager v-else-if="store.page === 'worlds'"/>
+      <Multiplayer v-else-if="store.page === 'multiplayer'" :instance="store.selectedInstance"/>
       <template v-else-if="store.page === 'downloads'">
         <section class="panel download-panel"><div class="section-heading"><h2>下载任务</h2><span>{{ store.installing || store.resourceDownloading ? '正在处理' : '空闲' }}</span></div><template v-if="store.downloadTask"><div class="download-heading"><div class="block-icon"><Package :size="26"/></div><div><h3>{{ store.downloadTask.title }}</h3><p>{{ store.downloadTask.message }}</p></div><strong>{{ store.downloadTask.percent }}%</strong></div><progress :value="store.downloadTask.percent" max="100" aria-label="资源下载进度"/><div class="download-meta"><span>{{ store.downloadTask.detail || (store.downloadTask.status === 'complete' ? '任务已完成' : store.downloadTask.status === 'error' ? '任务失败' : '正在连接下载源…') }}</span><span class="tag">{{ store.downloadTask.status === 'active' ? '下载中' : store.downloadTask.status === 'complete' ? '已完成' : '失败' }}</span></div></template><template v-else-if="store.progress"><div class="download-heading"><div class="block-icon"><Download :size="26"/></div><div><h3>Minecraft {{ store.progress.version }}</h3><p>{{ store.progress.message }}</p></div><strong>{{ store.percent }}%</strong></div><progress :value="store.percent" max="100" aria-label="下载进度"/><div class="download-meta"><span>{{ store.progress.completed }} / {{ store.progress.total }} 个文件 · SHA-1 校验</span><button v-if="store.installing" class="button secondary" @click="store.cancel">取消下载</button></div></template><div v-else class="empty-state"><Download :size="36"/><h3>没有进行中的下载</h3><p>下载游戏版本或社区资源后，进度会显示在这里。</p><button class="button secondary" @click="store.page = 'versions'">选择版本 <ArrowRight :size="16"/></button></div></section>
         <section class="panel log-panel"><div class="section-heading"><h2><Terminal :size="17"/>活动与游戏日志</h2><span v-if="store.gameRunning" class="running-label"><i class="activity-dot"/> Minecraft 运行中</span><button class="text-button" @click="store.logs = []">清空</button></div><div class="logs" role="log" aria-live="polite"><p v-if="!store.logs.length" class="muted">暂无日志。</p><div v-for="(entry, index) in store.logs" :key="index" :class="['log-row', entry.level]"><time>{{ entry.time }}</time><span>{{ entry.message }}</span></div></div></section>

@@ -21,6 +21,7 @@ pub fn run() {
         .manage(GameState::default())
         .manage(accounts::AccountState::default())
         .manage(p2p::port_mapping::MappingState::default())
+        .manage(p2p::controller::RoomState::default())
         .invoke_handler(tauri::generate_handler![
             settings::load_settings,
             settings::save_settings,
@@ -59,7 +60,13 @@ pub fn run() {
             p2p::network::inspect_p2p_network,
             p2p::nat::detect_p2p_nat,
             p2p::port_mapping::create_port_mapping,
-            p2p::port_mapping::remove_port_mapping
+            p2p::port_mapping::remove_port_mapping,
+            p2p::controller::create_p2p_room,
+            p2p::controller::join_p2p_room,
+            p2p::controller::accept_p2p_answer,
+            p2p::controller::connect_p2p_room,
+            p2p::controller::p2p_room_status,
+            p2p::controller::close_p2p_room
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 CatCL");

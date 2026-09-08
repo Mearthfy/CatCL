@@ -1,7 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { GameVersion, Settings, JavaInfo, InstallProgress, WorldLibrary, GameEvent, JavaProgress, ModpackInfo, LoaderInstallResult, ModpackApplyResult, ResourceProject, ResourceInstallResult, ResourceVersionInfo, ResourceProgress, ModpackProgress, SkinInfo, AccountInfo, MicrosoftChallenge, MinecraftLanStatus, P2pNetworkSnapshot, NatReport, PortMapping } from '../types'
+import type { GameVersion, Settings, JavaInfo, InstallProgress, WorldLibrary, GameEvent, JavaProgress, ModpackInfo, LoaderInstallResult, ModpackApplyResult, ResourceProject, ResourceInstallResult, ResourceVersionInfo, ResourceProgress, ModpackProgress, SkinInfo, AccountInfo, MicrosoftChallenge, MinecraftLanStatus, P2pNetworkSnapshot, NatReport, PortMapping, P2pRoomSnapshot } from '../types'
 
 export const desktop = isTauri()
 function native<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -67,10 +67,17 @@ export const backend = {
   detectP2pNat: (stunServers: string[]) => native<NatReport>('detect_p2p_nat', { stunServers }),
   createPortMapping: (localAddress: string, internalPort: number, preferredExternalPort = internalPort, lifetimeSecs = 1800) => native<PortMapping>('create_port_mapping', { localAddress, internalPort, preferredExternalPort, lifetimeSecs }),
   removePortMapping: () => native<void>('remove_port_mapping'),
+  createP2pRoom: (instancePath: string, lanTimeoutSecs = 120) => native<P2pRoomSnapshot>('create_p2p_room', { instancePath, lanTimeoutSecs }),
+  joinP2pRoom: (inviteCode: string) => native<P2pRoomSnapshot>('join_p2p_room', { inviteCode }),
+  acceptP2pAnswer: (answerCode: string) => native<P2pRoomSnapshot>('accept_p2p_answer', { answerCode }),
+  connectP2pRoom: () => native<P2pRoomSnapshot>('connect_p2p_room'),
+  p2pRoomStatus: () => native<P2pRoomSnapshot>('p2p_room_status'),
+  closeP2pRoom: () => native<P2pRoomSnapshot>('close_p2p_room'),
   onProgress: (callback: (progress: InstallProgress) => void) => listen<InstallProgress>('install-progress', event => callback(event.payload)),
   onResourceProgress: (callback: (progress: ResourceProgress) => void) => listen<ResourceProgress>('resource-progress', event => callback(event.payload)),
   onModpackProgress: (callback: (progress: ModpackProgress) => void) => listen<ModpackProgress>('modpack-progress', event => callback(event.payload)),
   onGameEvent: (callback: (event: GameEvent) => void) => listen<GameEvent>('game-event', event => callback(event.payload)),
   onJavaProgress: (callback: (progress: JavaProgress) => void) => listen<JavaProgress>('java-progress', event => callback(event.payload)),
   onMinecraftLan: (callback: (status: MinecraftLanStatus) => void) => listen<MinecraftLanStatus>('p2p-minecraft-lan', event => callback(event.payload)),
+  onP2pRoomState: (callback: (status: P2pRoomSnapshot) => void) => listen<P2pRoomSnapshot>('p2p-room-state', event => callback(event.payload)),
 }
