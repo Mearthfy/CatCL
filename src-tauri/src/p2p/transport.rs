@@ -1,6 +1,6 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use quinn::{ClientConfig, Endpoint, ServerConfig};
+use quinn::{ClientConfig, Endpoint, EndpointConfig, ServerConfig, TokioRuntime};
 use rustls::RootCertStore;
 use tokio::{io::AsyncReadExt, sync::RwLock, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
@@ -28,12 +28,27 @@ impl HostTransport {
         session: Arc<RwLock<Session>>,
     ) -> Result<Self> {
         let identity = EphemeralIdentity::generate()?;
+        let socket = std::net::UdpSocket::bind(bind)?;
+        Self::start_with_socket(socket, identity, target, session).await
+    }
+
+    pub async fn start_with_socket(
+        socket: std::net::UdpSocket,
+        identity: EphemeralIdentity,
+        target: SocketAddr,
+        session: Arc<RwLock<Session>>,
+    ) -> Result<Self> {
         let certificate = identity.certificate.to_vec();
         let server =
             ServerConfig::with_single_cert(vec![identity.certificate], identity.private_key.into())
                 .map_err(|error| P2pError::CryptoError(error.to_string()))?;
-        let endpoint = Endpoint::server(server, bind)
-            .map_err(|error| P2pError::NetworkUnavailable(error.to_string()))?;
+        let endpoint = Endpoint::new(
+            EndpointConfig::default(),
+            Some(server),
+            socket,
+            Arc::new(TokioRuntime),
+        )
+        .map_err(|error| P2pError::NetworkUnavailable(error.to_string()))?;
         let address = endpoint.local_addr()?;
         let worker_endpoint = endpoint.clone();
         let cancel = CancellationToken::new();
@@ -111,19 +126,34 @@ pub async fn connect_with_timeout(
     certificate: Vec<u8>,
     timeout: Duration,
 ) -> Result<(Endpoint, quinn::Connection)> {
+    let bind = if host.is_ipv6() {
+        "[::]:0"
+    } else {
+        "0.0.0.0:0"
+    };
+    let socket = std::net::UdpSocket::bind(bind).map_err(P2pError::Io)?;
+    connect_with_socket(socket, host, certificate, timeout).await
+}
+
+pub async fn connect_with_socket(
+    socket: std::net::UdpSocket,
+    host: SocketAddr,
+    certificate: Vec<u8>,
+    timeout: Duration,
+) -> Result<(Endpoint, quinn::Connection)> {
     let mut roots = RootCertStore::empty();
     roots
         .add(certificate.into())
         .map_err(|error| P2pError::CryptoError(error.to_string()))?;
     let client = ClientConfig::with_root_certificates(Arc::new(roots))
         .map_err(|error| P2pError::CryptoError(error.to_string()))?;
-    let bind = if host.is_ipv6() {
-        "[::]:0"
-    } else {
-        "0.0.0.0:0"
-    };
-    let mut endpoint = Endpoint::client(bind.parse().expect("static socket address"))
-        .map_err(|error| P2pError::NetworkUnavailable(error.to_string()))?;
+    let mut endpoint = Endpoint::new(
+        EndpointConfig::default(),
+        None,
+        socket,
+        Arc::new(TokioRuntime),
+    )
+    .map_err(|error| P2pError::NetworkUnavailable(error.to_string()))?;
     endpoint.set_default_client_config(client);
     let connection = tokio::time::timeout(
         timeout,

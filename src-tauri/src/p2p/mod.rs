@@ -30,11 +30,12 @@ mod tests {
 
     use super::{
         crypto::EphemeralIdentity,
+        hole_punch::punch,
         invite::Answer,
         protocol::{StreamHandshake, MAGIC, PROTOCOL_VERSION},
         proxy::LocalProxy,
         session::Session,
-        transport::{connect, connect_with_timeout, HostTransport},
+        transport::{connect, connect_with_socket, connect_with_timeout, HostTransport},
         P2pError,
     };
 
@@ -139,5 +140,96 @@ mod tests {
             result,
             Err(P2pError::Timeout) | Err(P2pError::HandshakeFailed(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn punched_udp_sockets_are_reused_by_quic_tunnel() {
+        let echo = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let echo_address = echo.local_addr().unwrap();
+        let echo_task = tokio::spawn(async move {
+            let (mut socket, _) = echo.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            socket.read_to_end(&mut bytes).await.unwrap();
+            socket.write_all(&bytes).await.unwrap();
+        });
+        let session = Arc::new(RwLock::new(Session::new(4)));
+        let session_id = session.read().await.id;
+        let host_nonce = session.read().await.host_nonce;
+        let peer_id = [4; 16];
+        let peer_nonce = [5; 32];
+        session
+            .write()
+            .await
+            .authorize(Answer {
+                magic: MAGIC,
+                protocol_version: PROTOCOL_VERSION,
+                session_id,
+                peer_id,
+                offer_nonce: host_nonce,
+                peer_nonce,
+                candidates: vec![],
+                expires_at: u64::MAX,
+            })
+            .unwrap();
+        let host_udp = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let client_udp = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let host_address = host_udp.local_addr().unwrap();
+        let client_address = client_udp.local_addr().unwrap();
+        let host_punch = tokio::spawn(async move {
+            punch(
+                host_udp,
+                &[client_address],
+                session_id,
+                host_nonce,
+                peer_nonce,
+                Duration::from_secs(2),
+            )
+            .await
+            .unwrap()
+        });
+        let client_punch = tokio::spawn(async move {
+            punch(
+                client_udp,
+                &[host_address],
+                session_id,
+                peer_nonce,
+                host_nonce,
+                Duration::from_secs(2),
+            )
+            .await
+            .unwrap()
+        });
+        let host_socket = host_punch.await.unwrap().into_std().await.unwrap();
+        let client_socket = client_punch.await.unwrap().into_std().await.unwrap();
+        let identity = EphemeralIdentity::generate().unwrap();
+        let certificate = identity.certificate.to_vec();
+        let host = HostTransport::start_with_socket(host_socket, identity, echo_address, session)
+            .await
+            .unwrap();
+        let (endpoint, connection) = connect_with_socket(
+            client_socket,
+            host.address,
+            certificate,
+            Duration::from_secs(3),
+        )
+        .await
+        .unwrap();
+        let proxy = LocalProxy::start(
+            "127.0.0.1:0".parse().unwrap(),
+            connection,
+            StreamHandshake::new(session_id, peer_id, peer_nonce),
+        )
+        .await
+        .unwrap();
+        let mut socket = TcpStream::connect(proxy.address).await.unwrap();
+        socket.write_all(b"punched-quic").await.unwrap();
+        socket.shutdown().await.unwrap();
+        let mut echoed = Vec::new();
+        socket.read_to_end(&mut echoed).await.unwrap();
+        assert_eq!(echoed, b"punched-quic");
+        proxy.shutdown().await;
+        endpoint.close(0u32.into(), b"done");
+        host.shutdown().await;
+        echo_task.await.unwrap();
     }
 }

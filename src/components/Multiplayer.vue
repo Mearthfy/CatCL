@@ -53,11 +53,12 @@ onBeforeUnmount(() => unlisten?.())
     <div class="network-facts"><span>状态<strong>{{ room?.message }}</strong></span><span>传输<strong>{{ room?.transport || '检测中' }}</strong></span><span>玩家<strong>{{ room?.playerCount || 1 }} / 4</strong></span><span>LAN 端口<strong>{{ room?.minecraftLanPort || '—' }}</strong></span></div>
     <template v-if="room?.role === 'host'">
       <label>房主邀请码<textarea :value="room.inviteCode || ''" readonly/><button class="button secondary" @click="copy(room.inviteCode, '邀请码')"><Check v-if="copied === '邀请码'" :size="16"/><Copy v-else :size="16"/>复制邀请码</button></label>
-      <label>好友回应码<textarea v-model.trim="answerInput" placeholder="粘贴好友发回的 CCL:// 回应码"/><button class="button primary" :disabled="busy || !answerInput" @click="acceptAnswer">授权好友</button></label>
+      <label>好友回应码<textarea v-model.trim="answerInput" placeholder="粘贴好友发回的 CCL:// 回应码"/><button class="button primary" :disabled="busy || !answerInput" @click="acceptAnswer"><LoaderCircle v-if="busy" class="spinning" :size="16"/>等待好友连接</button></label>
+      <p class="field-help">点击后请让好友立即点击“建立连接”，双方会使用同一 UDP 端口完成打洞。</p>
     </template>
     <template v-else>
       <label>回应码<textarea :value="room?.answerCode || ''" readonly/><button class="button secondary" @click="copy(room?.answerCode || null, '回应码')"><Check v-if="copied === '回应码'" :size="16"/><Copy v-else :size="16"/>复制回应码</button></label>
-      <button v-if="!room?.localAddress" class="button primary connect-room" :disabled="busy" @click="connectRoom"><LoaderCircle v-if="busy" class="spinning" :size="16"/><Link2 v-else :size="16"/>房主授权后建立连接</button>
+      <button v-if="!room?.localAddress" class="button primary connect-room" :disabled="busy" @click="connectRoom"><LoaderCircle v-if="busy" class="spinning" :size="16"/><Link2 v-else :size="16"/>与房主同时建立连接</button>
       <div v-else class="local-address"><span>Minecraft 多人游戏地址</span><strong>{{ room.localAddress }}</strong><button class="button secondary" @click="copy(room.localAddress, '地址')"><Copy :size="16"/>复制地址</button></div>
     </template>
     <button class="button danger close-room" :disabled="busy" @click="closeRoom"><Unplug :size="16"/>关闭联机</button>

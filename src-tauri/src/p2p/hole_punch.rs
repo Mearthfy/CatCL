@@ -49,6 +49,14 @@ impl PunchedSocket {
         self.cancel.cancel();
         let _ = self.keepalive.await;
     }
+
+    pub async fn into_std(self) -> Result<std::net::UdpSocket> {
+        self.cancel.cancel();
+        let _ = self.keepalive.await;
+        let socket = Arc::try_unwrap(self.socket)
+            .map_err(|_| P2pError::NatTraversalFailed("UDP socket 仍被后台任务占用".into()))?;
+        socket.into_std().map_err(Into::into)
+    }
 }
 
 pub async fn punch(

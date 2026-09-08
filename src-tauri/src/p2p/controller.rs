@@ -1,5 +1,4 @@
 use std::{
-    net::SocketAddr,
     path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -12,14 +11,17 @@ use tokio::sync::{Mutex, RwLock};
 
 use super::{
     candidate::preferred_direct,
+    crypto::EphemeralIdentity,
+    hole_punch::punch,
     invite::{Answer, CandidateKind, Offer},
     minecraft::{wait_for_lan, MinecraftLanStatus},
+    nat::discover_public_endpoint,
     network::inspect,
     protocol::{StreamHandshake, MAGIC, PROTOCOL_VERSION},
     proxy::LocalProxy,
     session::{Session, SessionState, DEFAULT_MAX_PLAYERS},
-    transport::{connect, HostTransport},
-    P2pError, Result,
+    transport::{connect_with_socket, HostTransport},
+    Result,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -37,7 +39,14 @@ pub struct RoomSnapshot {
 }
 
 enum RoomRuntime {
-    Host {
+    HostPending {
+        session: Arc<RwLock<Session>>,
+        offer: Offer,
+        lan: MinecraftLanStatus,
+        socket: tokio::net::UdpSocket,
+        identity: EphemeralIdentity,
+    },
+    HostConnected {
         session: Arc<RwLock<Session>>,
         transport: HostTransport,
         offer: Offer,
@@ -46,6 +55,7 @@ enum RoomRuntime {
     ClientPending {
         offer: Offer,
         answer: Answer,
+        socket: tokio::net::UdpSocket,
     },
     ClientConnected {
         endpoint: quinn::Endpoint,
@@ -147,12 +157,50 @@ fn log_path(instance_path: &str) -> PathBuf {
     }
 }
 
+const DEFAULT_STUN: &str = "stun.cloudflare.com:3478";
+
+async fn prepared_socket(ipv6: bool) -> Result<tokio::net::UdpSocket> {
+    let bind = if ipv6 { "[::]:0" } else { "0.0.0.0:0" };
+    tokio::net::UdpSocket::bind(bind).await.map_err(Into::into)
+}
+
+async fn candidates_for(
+    socket: &tokio::net::UdpSocket,
+    stun_server: &str,
+) -> Result<Vec<super::invite::Candidate>> {
+    let port = socket.local_addr()?.port();
+    let ipv6 = socket.local_addr()?.is_ipv6();
+    let mut candidates = inspect(port).await?.candidates;
+    candidates.retain(|candidate| {
+        candidate
+            .socket_addr()
+            .is_ok_and(|address| address.is_ipv6() == ipv6)
+    });
+    if let Ok(mapped) = discover_public_endpoint(socket, stun_server, Duration::from_secs(2)).await
+    {
+        candidates.push(super::invite::Candidate {
+            address: mapped.to_string(),
+            kind: CandidateKind::Mapped,
+        });
+    }
+    candidates.sort_by_key(|candidate| match candidate.kind {
+        CandidateKind::Ipv6Direct => 0,
+        CandidateKind::Mapped => 1,
+        CandidateKind::Ipv4Direct => 2,
+        CandidateKind::Local => 3,
+        CandidateKind::Loopback => 4,
+    });
+    candidates.dedup_by(|left, right| left.address == right.address);
+    Ok(candidates)
+}
+
 #[tauri::command]
 pub async fn create_p2p_room(
     app: tauri::AppHandle,
     state: tauri::State<'_, RoomState>,
     instance_path: String,
     lan_timeout_secs: Option<u64>,
+    stun_server: Option<String>,
 ) -> std::result::Result<RoomSnapshot, String> {
     {
         let active = state.0.lock().await;
@@ -185,25 +233,19 @@ pub async fn create_p2p_room(
     }
     let network = inspect(0).await.map_err(|error| error.to_string())?;
     let use_ipv6 = network.ipv6_direct;
-    let bind: SocketAddr = if use_ipv6 { "[::]:0" } else { "0.0.0.0:0" }
-        .parse()
-        .map_err(|_| "内部监听地址无效")?;
-    let target = SocketAddr::from(([127, 0, 0, 1], lan.port));
-    let transport = HostTransport::start(bind, target, session.clone())
+    let socket = prepared_socket(use_ipv6)
         .await
         .map_err(|error| error.to_string())?;
-    let mut network = inspect(transport.address.port())
+    let stun_server = stun_server
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_STUN.into());
+    let candidates = candidates_for(&socket, &stun_server)
         .await
         .map_err(|error| error.to_string())?;
-    network.candidates.retain(|candidate| {
-        candidate
-            .socket_addr()
-            .is_ok_and(|address| address.is_ipv6() == use_ipv6)
-    });
-    if network.candidates.is_empty() {
-        transport.shutdown().await;
+    if candidates.is_empty() {
         return Err("没有可用于建立房间的网络地址".into());
     }
+    let identity = EphemeralIdentity::generate().map_err(|error| error.to_string())?;
     let offer = {
         let mut value = session.write().await;
         value
@@ -211,8 +253,8 @@ pub async fn create_p2p_room(
             .map_err(|error| error.to_string())?;
         value
             .offer(
-                transport.certificate.clone(),
-                network.candidates,
+                identity.certificate.to_vec(),
+                candidates,
                 Duration::from_secs(1800),
             )
             .map_err(|error| error.to_string())?
@@ -222,11 +264,12 @@ pub async fn create_p2p_room(
         host_snapshot(&value, &offer, &lan, "房间已创建，等待好友回应码")
             .map_err(|error| error.to_string())?
     };
-    *state.0.lock().await = Some(RoomRuntime::Host {
+    *state.0.lock().await = Some(RoomRuntime::HostPending {
         session,
-        transport,
         offer,
         lan,
+        socket,
+        identity,
     });
     emit(&app, &snapshot);
     Ok(snapshot)
@@ -237,8 +280,19 @@ pub async fn join_p2p_room(
     app: tauri::AppHandle,
     state: tauri::State<'_, RoomState>,
     invite_code: String,
+    stun_server: Option<String>,
 ) -> std::result::Result<RoomSnapshot, String> {
     let offer = Offer::decode(&invite_code).map_err(|error| error.to_string())?;
+    let target = preferred_direct(&offer.candidates).ok_or("邀请码没有可用网络地址")?;
+    let socket = prepared_socket(target.is_ipv6())
+        .await
+        .map_err(|error| error.to_string())?;
+    let stun_server = stun_server
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_STUN.into());
+    let candidates = candidates_for(&socket, &stun_server)
+        .await
+        .map_err(|error| error.to_string())?;
     let mut peer_id = [0; 16];
     let mut peer_nonce = [0; 32];
     OsRng.fill_bytes(&mut peer_id);
@@ -255,7 +309,7 @@ pub async fn join_p2p_room(
         peer_id,
         offer_nonce: offer.nonce,
         peer_nonce,
-        candidates: vec![],
+        candidates,
         expires_at: expires_at.min(offer.expires_at),
     };
     let snapshot = client_snapshot(
@@ -270,7 +324,11 @@ pub async fn join_p2p_room(
     if active.is_some() {
         return Err("已有活动的联机房间，请先关闭".into());
     }
-    *active = Some(RoomRuntime::ClientPending { offer, answer });
+    *active = Some(RoomRuntime::ClientPending {
+        offer,
+        answer,
+        socket,
+    });
     emit(&app, &snapshot);
     Ok(snapshot)
 }
@@ -282,20 +340,76 @@ pub async fn accept_p2p_answer(
     answer_code: String,
 ) -> std::result::Result<RoomSnapshot, String> {
     let answer = Answer::decode(&answer_code).map_err(|error| error.to_string())?;
-    let active = state.0.lock().await;
-    let RoomRuntime::Host {
+    let pending = {
+        let mut active = state.0.lock().await;
+        match active.take() {
+            Some(RoomRuntime::HostPending {
+                session,
+                offer,
+                lan,
+                socket,
+                identity,
+            }) => (session, offer, lan, socket, identity),
+            Some(other) => {
+                *active = Some(other);
+                return Err("当前房间已开始传输或不是房主房间".into());
+            }
+            None => return Err("没有活动的房主房间".into()),
+        }
+    };
+    let (session, offer, lan, socket, identity) = pending;
+    {
+        let mut value = session.write().await;
+        value
+            .authorize(answer.clone())
+            .map_err(|error| error.to_string())?;
+        value
+            .transition(SessionState::Connecting)
+            .map_err(|error| error.to_string())?;
+        value
+            .transition(SessionState::Handshaking)
+            .map_err(|error| error.to_string())?;
+    }
+    let remote: Vec<_> = answer
+        .candidates
+        .iter()
+        .filter_map(|candidate| candidate.socket_addr().ok())
+        .collect();
+    let punched = match punch(
+        socket,
+        &remote,
+        offer.session_id,
+        offer.nonce,
+        answer.peer_nonce,
+        Duration::from_secs(60),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => return Err(format!("等待好友 UDP 打洞失败：{error}")),
+    };
+    let socket = punched
+        .into_std()
+        .await
+        .map_err(|error| error.to_string())?;
+    let target = std::net::SocketAddr::from(([127, 0, 0, 1], lan.port));
+    let transport = HostTransport::start_with_socket(socket, identity, target, session.clone())
+        .await
+        .map_err(|error| error.to_string())?;
+    let snapshot = {
+        let mut value = session.write().await;
+        value
+            .transition(SessionState::Connected)
+            .map_err(|error| error.to_string())?;
+        host_snapshot(&value, &offer, &lan, "好友已连接到加密通道")
+            .map_err(|error| error.to_string())?
+    };
+    *state.0.lock().await = Some(RoomRuntime::HostConnected {
         session,
+        transport,
         offer,
         lan,
-        ..
-    } = active.as_ref().ok_or("没有活动的房主房间")?
-    else {
-        return Err("当前不是房主房间".into());
-    };
-    let mut value = session.write().await;
-    value.authorize(answer).map_err(|error| error.to_string())?;
-    let snapshot = host_snapshot(&value, offer, lan, "好友已授权，可以通知对方建立连接")
-        .map_err(|error| error.to_string())?;
+    });
     emit(&app, &snapshot);
     Ok(snapshot)
 }
@@ -308,7 +422,11 @@ pub async fn connect_p2p_room(
     let pending = {
         let mut active = state.0.lock().await;
         match active.take() {
-            Some(RoomRuntime::ClientPending { offer, answer }) => (offer, answer),
+            Some(RoomRuntime::ClientPending {
+                offer,
+                answer,
+                socket,
+            }) => (offer, answer, socket),
             Some(other) => {
                 *active = Some(other);
                 return Err("当前没有等待连接的加入请求".into());
@@ -316,15 +434,39 @@ pub async fn connect_p2p_room(
             None => return Err("请先导入房主邀请码".into()),
         }
     };
-    let (offer, answer) = pending;
-    let target = preferred_direct(&offer.candidates)
-        .ok_or_else(|| P2pError::NetworkUnavailable("邀请码没有可用直连地址".into()).to_string())?;
-    let (endpoint, connection) = match connect(target, offer.host_public_key.clone()).await {
+    let (offer, answer, socket) = pending;
+    let punched = match punch(
+        socket,
+        &offer
+            .candidates
+            .iter()
+            .filter_map(|candidate| candidate.socket_addr().ok())
+            .collect::<Vec<_>>(),
+        offer.session_id,
+        answer.peer_nonce,
+        offer.nonce,
+        Duration::from_secs(60),
+    )
+    .await
+    {
         Ok(value) => value,
-        Err(error) => {
-            *state.0.lock().await = Some(RoomRuntime::ClientPending { offer, answer });
-            return Err(error.to_string());
-        }
+        Err(error) => return Err(format!("UDP 打洞失败：{error}")),
+    };
+    let target = punched.remote;
+    let socket = punched
+        .into_std()
+        .await
+        .map_err(|error| error.to_string())?;
+    let (endpoint, connection) = match connect_with_socket(
+        socket,
+        target,
+        offer.host_public_key.clone(),
+        Duration::from_secs(10),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => return Err(error.to_string()),
     };
     let handshake = StreamHandshake::new(offer.session_id, answer.peer_id, answer.peer_nonce);
     let proxy = match LocalProxy::start(
@@ -374,7 +516,13 @@ pub async fn p2p_room_status(
     let active = state.0.lock().await;
     match active.as_ref() {
         None => Ok(empty_snapshot(SessionState::Idle, "尚未创建或加入房间")),
-        Some(RoomRuntime::Host {
+        Some(RoomRuntime::HostPending {
+            session,
+            offer,
+            lan,
+            ..
+        })
+        | Some(RoomRuntime::HostConnected {
             session,
             offer,
             lan,
@@ -384,7 +532,7 @@ pub async fn p2p_room_status(
             host_snapshot(&session, offer, lan, "等待或管理好友连接")
                 .map_err(|error| error.to_string())
         }
-        Some(RoomRuntime::ClientPending { offer, answer }) => client_snapshot(
+        Some(RoomRuntime::ClientPending { offer, answer, .. }) => client_snapshot(
             offer,
             answer,
             SessionState::WaitingForAnswer,
@@ -415,7 +563,7 @@ pub async fn close_p2p_room(
 ) -> std::result::Result<RoomSnapshot, String> {
     let active = state.0.lock().await.take();
     match active {
-        Some(RoomRuntime::Host { transport, .. }) => transport.shutdown().await,
+        Some(RoomRuntime::HostConnected { transport, .. }) => transport.shutdown().await,
         Some(RoomRuntime::ClientConnected {
             endpoint, proxy, ..
         }) => {

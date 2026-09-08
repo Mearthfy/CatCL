@@ -115,9 +115,10 @@ pub async fn discover_public_endpoint(
     server: &str,
     timeout: Duration,
 ) -> Result<SocketAddr> {
+    let ipv6 = socket.local_addr()?.is_ipv6();
     let server = lookup_host(server)
         .await?
-        .next()
+        .find(|address| address.is_ipv6() == ipv6)
         .ok_or_else(|| P2pError::NatTraversalFailed("STUN 地址无法解析".into()))?;
     let mut transaction = [0; 12];
     OsRng.fill_bytes(&mut transaction);
