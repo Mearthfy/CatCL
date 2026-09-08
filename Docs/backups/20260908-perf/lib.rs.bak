@@ -1,0 +1,46 @@
+mod downloads;
+mod java_runtime;
+mod launch;
+mod loaders;
+mod modpacks;
+mod resources;
+mod settings;
+mod worlds;
+
+use downloads::DownloadState;
+use launch::GameState;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(DownloadState::default())
+        .manage(GameState::default())
+        .invoke_handler(tauri::generate_handler![
+            settings::load_settings,
+            settings::save_settings,
+            settings::delete_instance,
+            settings::detect_java,
+            downloads::list_versions,
+            downloads::install_version,
+            downloads::cancel_install,
+            downloads::installed_versions,
+            worlds::list_worlds,
+            worlds::rename_world,
+            worlds::import_world,
+            worlds::open_world_folder,
+            launch::launch_game,
+            loaders::install_loader,
+            loaders::list_loader_versions,
+            modpacks::inspect_modpack,
+            modpacks::apply_modpack,
+            resources::search_resources,
+            resources::open_resource_site,
+            resources::resource_versions,
+            resources::download_resource,
+            resources::install_resource,
+            java_runtime::install_java
+        ])
+        .run(tauri::generate_context!())
+        .expect("无法启动 CatCL");
+}
