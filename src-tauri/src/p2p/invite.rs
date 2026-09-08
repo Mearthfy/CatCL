@@ -12,6 +12,8 @@ use super::{
 const PREFIX: &str = "CCL://";
 const MAX_INVITE_BYTES: usize = 64 * 1024;
 const CLOCK_SKEW_SECS: u64 = 120;
+const MAX_CANDIDATES: usize = 32;
+const MAX_PUBLIC_KEY_BYTES: usize = 16 * 1024;
 
 #[derive(Serialize, Deserialize)]
 struct Envelope {
@@ -36,6 +38,7 @@ impl Candidate {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CandidateKind {
     Loopback,
+    Local,
     Ipv6Direct,
     Ipv4Direct,
     Mapped,
@@ -127,6 +130,10 @@ impl Offer {
     pub fn decode(code: &str) -> Result<Self> {
         let value: Self = decode(code)?;
         validate(value.magic, value.protocol_version, value.expires_at)?;
+        if value.host_public_key.is_empty() || value.host_public_key.len() > MAX_PUBLIC_KEY_BYTES {
+            return Err(P2pError::InviteInvalid("主机证书大小无效".into()));
+        }
+        validate_candidates(&value.candidates)?;
         Ok(value)
     }
 }
@@ -138,8 +145,19 @@ impl Answer {
     pub fn decode(code: &str) -> Result<Self> {
         let value: Self = decode(code)?;
         validate(value.magic, value.protocol_version, value.expires_at)?;
+        validate_candidates(&value.candidates)?;
         Ok(value)
     }
+}
+
+fn validate_candidates(candidates: &[Candidate]) -> Result<()> {
+    if candidates.len() > MAX_CANDIDATES {
+        return Err(P2pError::InviteInvalid("网络候选数量过多".into()));
+    }
+    for candidate in candidates {
+        candidate.socket_addr()?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

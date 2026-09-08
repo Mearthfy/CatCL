@@ -117,7 +117,12 @@ pub async fn connect_with_timeout(
         .map_err(|error| P2pError::CryptoError(error.to_string()))?;
     let client = ClientConfig::with_root_certificates(Arc::new(roots))
         .map_err(|error| P2pError::CryptoError(error.to_string()))?;
-    let mut endpoint = Endpoint::client("0.0.0.0:0".parse().expect("static socket address"))
+    let bind = if host.is_ipv6() {
+        "[::]:0"
+    } else {
+        "0.0.0.0:0"
+    };
+    let mut endpoint = Endpoint::client(bind.parse().expect("static socket address"))
         .map_err(|error| P2pError::NetworkUnavailable(error.to_string()))?;
     endpoint.set_default_client_config(client);
     let connection = tokio::time::timeout(

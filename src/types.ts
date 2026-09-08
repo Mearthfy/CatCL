@@ -24,3 +24,6 @@ export interface GameEvent { version: string; kind: 'started' | 'stdout' | 'stde
 export interface LogEntry { time: string; message: string; level: 'info' | 'error' }
 export interface SkinInfo { player: string; width: number; height: number; dataUrl: string }
 export interface MinecraftLanStatus { port: number; address: string; ready: boolean }
+export type P2pCandidateKind = 'Loopback' | 'Local' | 'Ipv6Direct' | 'Ipv4Direct' | 'Mapped'
+export interface P2pCandidate { address: string; kind: P2pCandidateKind }
+export interface P2pNetworkSnapshot { ipv6Direct: boolean; udpAvailable: boolean; candidates: P2pCandidate[] }

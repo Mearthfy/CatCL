@@ -54,7 +54,8 @@ pub fn run() {
             skins::import_skin,
             skins::load_skin,
             skins::remove_skin,
-            p2p::minecraft::detect_minecraft_lan
+            p2p::minecraft::detect_minecraft_lan,
+            p2p::network::inspect_p2p_network
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 CatCL");
