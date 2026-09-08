@@ -1,7 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { GameVersion, Settings, JavaInfo, InstallProgress, WorldLibrary, GameEvent, JavaProgress, ModpackInfo, LoaderInstallResult, ModpackApplyResult, ResourceProject, ResourceInstallResult, ResourceVersionInfo, ResourceProgress, ModpackProgress, SkinInfo, AccountInfo, MicrosoftChallenge, MinecraftLanStatus, P2pNetworkSnapshot, NatReport } from '../types'
+import type { GameVersion, Settings, JavaInfo, InstallProgress, WorldLibrary, GameEvent, JavaProgress, ModpackInfo, LoaderInstallResult, ModpackApplyResult, ResourceProject, ResourceInstallResult, ResourceVersionInfo, ResourceProgress, ModpackProgress, SkinInfo, AccountInfo, MicrosoftChallenge, MinecraftLanStatus, P2pNetworkSnapshot, NatReport, PortMapping } from '../types'
 
 export const desktop = isTauri()
 function native<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -65,6 +65,8 @@ export const backend = {
   detectMinecraftLan: (instancePath: string, timeoutSecs = 120) => native<MinecraftLanStatus>('detect_minecraft_lan', { instancePath, timeoutSecs }),
   inspectP2pNetwork: (port = 0) => native<P2pNetworkSnapshot>('inspect_p2p_network', { port }),
   detectP2pNat: (stunServers: string[]) => native<NatReport>('detect_p2p_nat', { stunServers }),
+  createPortMapping: (localAddress: string, internalPort: number, preferredExternalPort = internalPort, lifetimeSecs = 1800) => native<PortMapping>('create_port_mapping', { localAddress, internalPort, preferredExternalPort, lifetimeSecs }),
+  removePortMapping: () => native<void>('remove_port_mapping'),
   onProgress: (callback: (progress: InstallProgress) => void) => listen<InstallProgress>('install-progress', event => callback(event.payload)),
   onResourceProgress: (callback: (progress: ResourceProgress) => void) => listen<ResourceProgress>('resource-progress', event => callback(event.payload)),
   onModpackProgress: (callback: (progress: ModpackProgress) => void) => listen<ModpackProgress>('modpack-progress', event => callback(event.payload)),

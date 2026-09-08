@@ -30,6 +30,8 @@ pub enum P2pError {
     MinecraftConnectionFailed(String),
     #[error("NAT 穿透失败：{0}")]
     NatTraversalFailed(String),
+    #[error("端口映射失败：{0}")]
+    PortMappingFailed(String),
     #[error("对端已断开")]
     PeerDisconnected,
     #[error(transparent)]

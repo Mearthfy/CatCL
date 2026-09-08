@@ -29,3 +29,5 @@ export interface P2pCandidate { address: string; kind: P2pCandidateKind }
 export interface P2pNetworkSnapshot { ipv6Direct: boolean; udpAvailable: boolean; candidates: P2pCandidate[] }
 export type NatType = 'OpenInternet' | 'ConeOrRestricted' | 'Symmetric' | 'Unknown'
 export interface NatReport { natType: NatType; mappedAddresses: string[]; successfulServers: number }
+export type MappingMethod = 'Upnp' | 'NatPmp' | 'Pcp'
+export interface PortMapping { method: MappingMethod; internalPort: number; externalPort: number; externalAddress: string | null; lifetimeSecs: number }

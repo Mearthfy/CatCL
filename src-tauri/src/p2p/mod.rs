@@ -6,6 +6,7 @@ pub mod invite;
 pub mod minecraft;
 pub mod nat;
 pub mod network;
+pub mod port_mapping;
 pub mod protocol;
 pub mod proxy;
 pub mod session;

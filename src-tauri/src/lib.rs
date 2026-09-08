@@ -20,6 +20,7 @@ pub fn run() {
         .manage(DownloadState::default())
         .manage(GameState::default())
         .manage(accounts::AccountState::default())
+        .manage(p2p::port_mapping::MappingState::default())
         .invoke_handler(tauri::generate_handler![
             settings::load_settings,
             settings::save_settings,
@@ -56,7 +57,9 @@ pub fn run() {
             skins::remove_skin,
             p2p::minecraft::detect_minecraft_lan,
             p2p::network::inspect_p2p_network,
-            p2p::nat::detect_p2p_nat
+            p2p::nat::detect_p2p_nat,
+            p2p::port_mapping::create_port_mapping,
+            p2p::port_mapping::remove_port_mapping
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 CatCL");

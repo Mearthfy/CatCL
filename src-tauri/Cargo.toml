@@ -36,6 +36,8 @@ thiserror = "2"
 notify = "8"
 if-addrs = "0.14"
 subtle = "2"
+igd-next = { version = "0.16", features = ["aio_tokio"] }
+default-net = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Threading"] }
