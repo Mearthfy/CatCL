@@ -24,6 +24,10 @@ pub enum P2pError {
     InvalidState(String),
     #[error("代理失败：{0}")]
     Proxy(String),
+    #[error("未发现 Minecraft 局域网服务器")]
+    MinecraftLanNotFound,
+    #[error("无法连接 Minecraft 局域网服务器：{0}")]
+    MinecraftConnectionFailed(String),
     #[error("对端已断开")]
     PeerDisconnected,
     #[error(transparent)]

@@ -53,7 +53,8 @@ pub fn run() {
             java_runtime::install_java,
             skins::import_skin,
             skins::load_skin,
-            skins::remove_skin
+            skins::remove_skin,
+            p2p::minecraft::detect_minecraft_lan
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 CatCL");

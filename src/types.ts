@@ -23,3 +23,4 @@ export interface InstallProgress { version: string; completed: number; total: nu
 export interface GameEvent { version: string; kind: 'started' | 'stdout' | 'stderr' | 'exited'; message: string; exitCode: number | null }
 export interface LogEntry { time: string; message: string; level: 'info' | 'error' }
 export interface SkinInfo { player: string; width: number; height: number; dataUrl: string }
+export interface MinecraftLanStatus { port: number; address: string; ready: boolean }

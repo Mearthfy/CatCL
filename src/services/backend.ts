@@ -1,7 +1,7 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { GameVersion, Settings, JavaInfo, InstallProgress, WorldLibrary, GameEvent, JavaProgress, ModpackInfo, LoaderInstallResult, ModpackApplyResult, ResourceProject, ResourceInstallResult, ResourceVersionInfo, ResourceProgress, ModpackProgress, SkinInfo, AccountInfo, MicrosoftChallenge } from '../types'
+import type { GameVersion, Settings, JavaInfo, InstallProgress, WorldLibrary, GameEvent, JavaProgress, ModpackInfo, LoaderInstallResult, ModpackApplyResult, ResourceProject, ResourceInstallResult, ResourceVersionInfo, ResourceProgress, ModpackProgress, SkinInfo, AccountInfo, MicrosoftChallenge, MinecraftLanStatus } from '../types'
 
 export const desktop = isTauri()
 function native<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -62,9 +62,11 @@ export const backend = {
   cancel: () => native<void>('cancel_install'),
   installed: (gameDir: string) => native<string[]>('installed_versions', { gameDir }),
   launch: (baseVersion: string, launchVersion: string, instancePath: string, settings: Settings, diagnostic = false) => native<void>('launch_game', { request: { baseVersion, launchVersion, instancePath, javaPath: settings.javaPath, memoryMb: settings.memoryMb, offlineName: settings.offlineName, accountMode: settings.accountMode, diagnostic, experimentalHotset: settings.experimentalHotset } }),
+  detectMinecraftLan: (instancePath: string, timeoutSecs = 120) => native<MinecraftLanStatus>('detect_minecraft_lan', { instancePath, timeoutSecs }),
   onProgress: (callback: (progress: InstallProgress) => void) => listen<InstallProgress>('install-progress', event => callback(event.payload)),
   onResourceProgress: (callback: (progress: ResourceProgress) => void) => listen<ResourceProgress>('resource-progress', event => callback(event.payload)),
   onModpackProgress: (callback: (progress: ModpackProgress) => void) => listen<ModpackProgress>('modpack-progress', event => callback(event.payload)),
   onGameEvent: (callback: (event: GameEvent) => void) => listen<GameEvent>('game-event', event => callback(event.payload)),
   onJavaProgress: (callback: (progress: JavaProgress) => void) => listen<JavaProgress>('java-progress', event => callback(event.payload)),
+  onMinecraftLan: (callback: (status: MinecraftLanStatus) => void) => listen<MinecraftLanStatus>('p2p-minecraft-lan', event => callback(event.payload)),
 }
