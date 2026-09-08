@@ -28,6 +28,8 @@ pub enum P2pError {
     MinecraftLanNotFound,
     #[error("无法连接 Minecraft 局域网服务器：{0}")]
     MinecraftConnectionFailed(String),
+    #[error("NAT 穿透失败：{0}")]
+    NatTraversalFailed(String),
     #[error("对端已断开")]
     PeerDisconnected,
     #[error(transparent)]

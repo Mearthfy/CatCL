@@ -1,8 +1,10 @@
-pub mod crypto;
 pub mod candidate;
+pub mod crypto;
 pub mod error;
+pub mod hole_punch;
 pub mod invite;
 pub mod minecraft;
+pub mod nat;
 pub mod network;
 pub mod protocol;
 pub mod proxy;

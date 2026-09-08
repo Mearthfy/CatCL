@@ -27,3 +27,5 @@ export interface MinecraftLanStatus { port: number; address: string; ready: bool
 export type P2pCandidateKind = 'Loopback' | 'Local' | 'Ipv6Direct' | 'Ipv4Direct' | 'Mapped'
 export interface P2pCandidate { address: string; kind: P2pCandidateKind }
 export interface P2pNetworkSnapshot { ipv6Direct: boolean; udpAvailable: boolean; candidates: P2pCandidate[] }
+export type NatType = 'OpenInternet' | 'ConeOrRestricted' | 'Symmetric' | 'Unknown'
+export interface NatReport { natType: NatType; mappedAddresses: string[]; successfulServers: number }
