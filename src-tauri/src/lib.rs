@@ -4,6 +4,7 @@ mod java_runtime;
 mod launch;
 mod loaders;
 mod modpacks;
+pub mod p2p;
 mod resources;
 mod settings;
 mod skins;
