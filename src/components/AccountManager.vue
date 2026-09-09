@@ -16,8 +16,8 @@ async function copyCode() {
     </select>
     <p v-if="store.settings.accountMode === 'offline'" class="field-help">离线模式使用本地用户名和稳定 UUID，不加载启动器皮肤。</p>
     <template v-else-if="store.settings.accountMode === 'littleskin'">
-      <label>LittleSkin 邮箱或账户<input v-model.trim="store.accountUsername" autocomplete="username" :disabled="store.loggingIn"/></label>
-      <label>密码<input v-model="store.accountPassword" type="password" autocomplete="current-password" :disabled="store.loggingIn" @keyup.enter="store.loginLittleSkin"/></label>
+      <label class="account-field"><span>LittleSkin 邮箱或账户</span><input v-model.trim="store.accountUsername" autocomplete="username" :disabled="store.loggingIn"/></label>
+      <label class="account-field"><span>密码</span><input v-model="store.accountPassword" type="password" autocomplete="current-password" :disabled="store.loggingIn" @keyup.enter="store.loginLittleSkin"/></label>
       <button class="button primary" :disabled="store.loggingIn || !store.accountUsername || !store.accountPassword" @click="store.loginLittleSkin"><LogIn :size="16"/>{{ store.loggingIn ? '登录中…' : '登录 LittleSkin' }}</button>
     </template>
     <template v-else>
